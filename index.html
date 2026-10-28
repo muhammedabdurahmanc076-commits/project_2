@@ -19,6 +19,8 @@
     <div id="authArea"></div>
   </header>
 
+  <div id="verifyBanner" class="verify-banner" style="display:none"></div>
+
   <main id="app">
 
     <!-- AUTH -->
@@ -57,6 +59,7 @@
         <button id="searchBtn">Search</button>
       </div>
       <div id="notesList" class="notes-grid"></div>
+      <div id="pagination" class="pagination"></div>
     </section>
 
     <!-- NOTE DETAIL -->
@@ -68,6 +71,7 @@
     <!-- UPLOAD -->
     <section id="view-upload" class="view">
       <h2>Upload Notes</h2>
+      <p style="color:var(--muted);font-size:0.85rem">Allowed types: PDF, DOC/DOCX, PPT/PPTX, TXT, MD, JPG, PNG — max 15MB. You must verify your email before uploading.</p>
       <form id="uploadForm" class="uploadform">
         <input type="text" name="title" placeholder="Title" required>
         <input type="text" name="subject" placeholder="Subject">

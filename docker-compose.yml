@@ -1,0 +1,16 @@
+version: "3.9"
+services:
+  studyshare:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - studyshare_data:/app/data
+    environment:
+      - PORT=3000
+      - APP_URL=http://localhost:3000
+      - DATA_DIR=/app/data
+    restart: unless-stopped
+
+volumes:
+  studyshare_data:
