@@ -3,19 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StudyShare — Student Notes Sharing Platform</title>
+<title>StudyShare — Student notes, shared</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">📚 StudyShare</div>
-    <nav id="nav">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="7" width="20" height="22" rx="3" fill="#ffe66d" stroke="#15203b" stroke-width="2"/><rect x="9" y="3" width="20" height="22" rx="3" fill="#2f4bdc" stroke="#15203b" stroke-width="2"/><path d="M14 11h10M14 16h10M14 21h6" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+      StudyShare
+    </div>
+    <nav id="nav" aria-label="Main">
       <button data-view="browse" class="navbtn active">Browse</button>
       <button data-view="upload" class="navbtn">Upload</button>
       <button data-view="bookmarks" class="navbtn">Bookmarks</button>
       <button data-view="notifications" class="navbtn">Notifications</button>
       <button data-view="moderation" class="navbtn mod-only" style="display:none">Moderation</button>
     </nav>
+    <span class="demo-chip" title="The server isn't reachable, so sample data is shown">Preview with sample data</span>
     <div id="authArea"></div>
   </header>
 
@@ -23,90 +30,99 @@
 
   <main id="app">
 
-    <!-- AUTH -->
     <section id="view-auth" class="view">
       <div class="authbox">
-        <div class="tabs">
-          <button class="tab active" data-tab="login">Login</button>
-          <button class="tab" data-tab="register">Register</button>
+        <h2>Welcome to StudyShare</h2>
+        <p class="page-sub">Log in to upload notes, rate them and save your favourites.</p>
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-tab="login" type="button">Log in</button>
+          <button class="tab" data-tab="register" type="button">Create account</button>
         </div>
         <form id="loginForm" class="authform">
-          <input type="email" name="email" placeholder="Email" required>
-          <input type="password" name="password" placeholder="Password" required>
+          <input type="email" name="email" placeholder="Email" autocomplete="email" required>
+          <input type="password" name="password" placeholder="Password" autocomplete="current-password" required>
           <button type="submit">Log in</button>
         </form>
         <form id="registerForm" class="authform" style="display:none">
-          <input type="text" name="name" placeholder="Full name" required>
-          <input type="email" name="email" placeholder="Email" required>
-          <input type="password" name="password" placeholder="Password" required>
+          <input type="text" name="name" placeholder="Full name" autocomplete="name" required>
+          <input type="email" name="email" placeholder="Email" autocomplete="email" required>
+          <input type="password" name="password" placeholder="Password (8+ characters, letter and number)" autocomplete="new-password" required>
           <button type="submit">Create account</button>
         </form>
-        <p id="authMsg" class="msg"></p>
+        <p id="authMsg" class="msg" role="status"></p>
       </div>
     </section>
 
-    <!-- BROWSE -->
     <section id="view-browse" class="view">
-      <div class="toolbar">
-        <input id="searchInput" placeholder="Search notes…">
-        <input id="courseInput" placeholder="Course code">
-        <input id="tagInput" placeholder="Tag">
-        <select id="sortSelect">
-          <option value="">Newest</option>
-          <option value="top_rated">Top rated</option>
-          <option value="most_viewed">Most viewed</option>
-        </select>
-        <button id="searchBtn">Search</button>
+      <div class="hero">
+        <h1>Find the notes that got your classmates through the exam.</h1>
+        <p>Upload your own, rate what helps, and bookmark the rest for revision week.</p>
+        <div class="searchbar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="searchInput" placeholder="Search by title, topic or description" aria-label="Search notes">
+          <button id="searchBtn">Search</button>
+        </div>
+        <div class="filters">
+          <input id="courseInput" placeholder="Course code, e.g. CS301" aria-label="Course code">
+          <input id="tagInput" placeholder="Tag" aria-label="Tag">
+          <select id="sortSelect" aria-label="Sort by">
+            <option value="">Newest first</option>
+            <option value="top_rated">Top rated</option>
+            <option value="most_viewed">Most viewed</option>
+          </select>
+        </div>
       </div>
       <div id="notesList" class="notes-grid"></div>
       <div id="pagination" class="pagination"></div>
     </section>
 
-    <!-- NOTE DETAIL -->
     <section id="view-note" class="view">
-      <button id="backToBrowse">&larr; Back</button>
+      <button id="backToBrowse">&larr; Back to notes</button>
       <div id="noteDetail"></div>
     </section>
 
-    <!-- UPLOAD -->
     <section id="view-upload" class="view">
-      <h2>Upload Notes</h2>
-      <p style="color:var(--muted);font-size:0.85rem">Allowed types: PDF, DOC/DOCX, PPT/PPTX, TXT, MD, JPG, PNG — max 15MB. You must verify your email before uploading.</p>
-      <form id="uploadForm" class="uploadform">
-        <input type="text" name="title" placeholder="Title" required>
-        <input type="text" name="subject" placeholder="Subject">
-        <input type="text" name="course_code" placeholder="Course code (e.g. CS301)">
-        <input type="text" name="semester" placeholder="Semester">
-        <input type="text" name="tags" placeholder="Tags (comma-separated)">
-        <textarea name="description" placeholder="Short description"></textarea>
-        <input type="file" name="file" required>
-        <button type="submit">Upload</button>
+      <h2 class="page-title">Upload notes</h2>
+      <p class="page-sub">PDF, DOC/DOCX, PPT/PPTX, TXT, MD, JPG or PNG, up to 15 MB. Verify your email first to upload.</p>
+      <form id="uploadForm" class="uploadform" style="max-width:560px">
+        <div><label class="field">Title</label><input type="text" name="title" placeholder="e.g. OS: CPU scheduling summary" required></div>
+        <div><label class="field">Subject</label><input type="text" name="subject" placeholder="Operating Systems"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div><label class="field">Course code</label><input type="text" name="course_code" placeholder="CS301"></div>
+          <div><label class="field">Semester</label><input type="text" name="semester" placeholder="S5"></div>
+        </div>
+        <div><label class="field">Tags</label><input type="text" name="tags" placeholder="scheduling, unit-2, exam"></div>
+        <div><label class="field">Description</label><textarea name="description" placeholder="What does this cover? Who is it useful for?"></textarea></div>
+        <div><label class="field">File</label><input type="file" name="file" required></div>
+        <button type="submit">Upload notes</button>
       </form>
-      <p id="uploadMsg" class="msg"></p>
+      <p id="uploadMsg" class="msg" role="status"></p>
     </section>
 
-    <!-- BOOKMARKS -->
     <section id="view-bookmarks" class="view">
-      <h2>My Bookmarks</h2>
+      <h2 class="page-title">Your bookmarks</h2>
+      <p class="page-sub">Notes you saved for later.</p>
       <div id="bookmarksList" class="notes-grid"></div>
     </section>
 
-    <!-- NOTIFICATIONS -->
     <section id="view-notifications" class="view">
-      <h2>Notifications</h2>
+      <h2 class="page-title">Notifications</h2>
+      <p class="page-sub">New notes in courses you follow, and replies to your comments.</p>
       <ul id="notificationsList" class="notif-list"></ul>
     </section>
 
-    <!-- MODERATION -->
     <section id="view-moderation" class="view">
-      <h2>Moderation Dashboard</h2>
+      <h2 class="page-title">Moderation</h2>
+      <p class="page-sub">Platform numbers and notes that people have reported.</p>
       <div id="statsBox" class="stats-box"></div>
-      <h3>Open Reports</h3>
+      <h3>Open reports</h3>
       <div id="reportsList"></div>
     </section>
 
   </main>
+  <div id="toast" role="status" aria-live="polite"></div>
 
+  <script src="/demo.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>
