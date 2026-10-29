@@ -73,10 +73,32 @@ studyshare/
 ├── uploads/             # uploaded note files (created at runtime)
 ├── studyshare.db        # SQLite database file (created at runtime)
 └── public/               # frontend (served as static files)
-    ├── index.html
-    ├── style.css
-    └── app.js
+    ├── index.html     # self-contained: CSS + JS are inlined, so it also works on its own
+    ├── style.css      # same styles as in index.html (kept for easy editing)
+    ├── app.js         # frontend logic (uses the API, or demo mode if there's no backend)
+    └── demo.js        # sample data + fake API used by preview (no-backend) mode
 ```
+
+## Frontend-only preview (no backend needed)
+
+The frontend works without the server. If the API can't be reached, or the
+page is opened as a plain file (`file://`, or `content://` on Android), it
+switches to **preview mode**: a "Preview" badge appears in the header and the
+app runs on the 5 sample notes from `public/demo.js`. Browsing, search, ratings,
+comments, bookmarks and uploads all work, and demo uploads are kept in the
+browser's storage when it allows that (otherwise just for the current visit).
+Logins and uploads in preview mode are not real and nothing is sent anywhere.
+
+Ways to open it:
+
+- **On a computer:** open `public/index.html` in any browser, or run
+  `node server.js` for the real app.
+- **On a phone:** extract the zip first, then open `public/index.html` in
+  Chrome. Do **not** open it from inside a zip viewer such as ZArchiver: only
+  that one file is passed to the browser, so `app.js`, `demo.js` and
+  `style.css` can't load and the Browse page stays empty. `index.html` has
+  everything built in, so once it is extracted or saved as a normal file it
+  works on its own.
 
 ## Modules implemented
 
@@ -162,3 +184,31 @@ GET    /api/moderation/reports                                                  
 POST   /api/moderation/reports/:id  { action: "remove_note" | "dismiss" }              [moderator/admin]
 GET    /api/dashboard/stats                                                           [moderator/admin]
 ```
+
+## StudyShare v2 improvements
+
+- Modern responsive student-focused interface
+- Light/dark theme toggle with saved preference
+- Improved search/filter experience and keyboard search
+- Drag-and-drop note upload with file preview and upload state
+- Cleaner note cards, verification badges, tags and statistics
+- Mobile-friendly layouts and touch-friendly controls
+- Improved empty states, visual hierarchy and accessibility
+
+## Changelog (frontend)
+
+- **v3 to v8** — layout and theme work, then inline style and colour fallbacks
+  inside `index.html` so the page stays readable even if `style.css` fails to load.
+- **v9** — storage is now accessed safely. Pages opened from `content://` or
+  `file://` can throw on `localStorage`, which previously stopped all of
+  `app.js` from running (blank Browse page). A built-in memory fallback is used
+  instead, and non-`http(s)` pages start in preview mode automatically.
+- **v10** — `index.html` is self-contained (CSS and JS inlined), fixing the
+  blank page when it is opened by itself from a zip viewer.
+- **v11** — mobile polish: compact one-row header with scrollable tabs, shorter
+  hero card, search box and button on one row, side-by-side filters, tighter
+  note cards, clearer keyboard focus, and reduced-motion support.
+
+If you edit `app.js`, `demo.js` or `style.css`, re-inline them into
+`public/index.html` (or edit `index.html` directly) so the single-file version
+stays in sync.

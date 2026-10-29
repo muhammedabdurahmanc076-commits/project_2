@@ -1,11 +1,12 @@
 // app.js — StudyShare frontend (vanilla JS, no build step required)
 
 const state = {
-  token: localStorage.getItem('ss_token') || null,
-  user: JSON.parse(localStorage.getItem('ss_user') || 'null'),
+  token: ssStore.getItem('ss_token') || null,
+  user: JSON.parse(ssStore.getItem('ss_user') || 'null'),
   currentNoteId: null,
   page: 1,
-  lastVerificationUrl: localStorage.getItem('ss_verification_url') || null,
+  lastVerificationUrl: ssStore.getItem('ss_verification_url') || null,
+  demo: ssStore.getItem('ss_demo_mode') === '1' || !ssIsWeb,
 };
 
 function authHeaders() {
@@ -13,7 +14,9 @@ function authHeaders() {
 }
 
 async function api(path, options = {}) {
-  const res = await fetch(`/api${path}`, {
+  if (state.demo) return demoApi(path, options);
+  let res;
+  try { res = await fetch(`/api${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -21,24 +24,118 @@ async function api(path, options = {}) {
       ...(options.headers || {}),
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
-  });
+  }); } catch (e) { state.demo = true; document.body.classList.add('demo'); return demoApi(path, options); }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
 }
 
+
+function enableDemoMode() {
+  state.demo = true;
+  ssStore.setItem('ss_demo_mode', '1');
+  document.body.classList.add('demo');
+  if (!state.user) {
+    state.user = { id: 3, name: 'Demo Student', role: 'student', email: 'student@studyshare.local', email_verified: 1 };
+    state.token = 'demo';
+    ssStore.setItem('ss_token', 'demo');
+    ssStore.setItem('ss_user', JSON.stringify(state.user));
+  }
+  renderAuthArea();
+}
+
+async function checkBackend() {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1800);
+    const res = await fetch('/api/notes?page=1&page_size=1', { signal: controller.signal, headers: authHeaders() });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error('Backend unavailable');
+    if (state.demo && state.token === 'demo') { state.token = null; state.user = null; ssStore.removeItem('ss_token'); ssStore.removeItem('ss_user'); }
+    state.demo = false; ssStore.removeItem('ss_demo_mode'); document.body.classList.remove('demo');
+    return true;
+  } catch (_) {
+    enableDemoMode();
+    return false;
+  }
+}
+
 // For file uploads: send as multipart/form-data (no base64 inflation).
 // Do NOT set Content-Type manually — the browser sets it with the boundary.
-async function apiUpload(path, formData, method = 'POST') {
-  const res = await fetch(`/api${path}`, {
-    method,
-    headers: { ...authHeaders() },
-    body: formData,
+function apiUpload(path, formData, method = 'POST', onProgress) {
+  if (state.demo) return demoUpload(formData);
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, `/api${path}`);
+    if (state.token) xhr.setRequestHeader('Authorization', `Bearer ${state.token}`);
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
+    });
+    xhr.onload = () => {
+      let data = {}; try { data = JSON.parse(xhr.responseText || '{}'); } catch {}
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+      else reject(new Error(data.error || 'Upload failed'));
+    };
+    xhr.onerror = () => reject(new Error('Network error during upload'));
+    xhr.onabort = () => reject(new Error('Upload cancelled'));
+    xhr.send(formData);
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Request failed');
-  return data;
 }
+
+// ---------- ui helpers ----------
+
+const ICONS = {
+  down: '<path d="M12 4v12m0 0 5-5m-5 5-5-5M5 20h14"/>',
+  mark: '<path d="M6 3h12v18l-6-4-6 4z"/>',
+  flag: '<path d="M5 21V4m0 0h12l-2 4 2 4H5"/>',
+  check: '<path d="m5 12 5 5 9-10"/>',
+  chat: '<path d="M4 5h16v11H9l-5 4z"/>',
+  eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+};
+function icon(name) {
+  return `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
+}
+function spineColor(key) {
+  let h = 0;
+  for (const c of String(key || 'x')) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return `hsl(${h} 62% 52%)`;
+}
+let toastTimer;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+// ---------- theme + enhanced upload ----------
+function applyTheme() {
+  const saved = ssStore.getItem('ss_theme');
+  const dark = saved === 'dark' || (!saved && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  document.body.classList.toggle('dark', dark);
+  const btn = document.getElementById('themeToggle');
+  if (btn) { btn.textContent = dark ? '☀' : '◐'; btn.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme'); }
+}
+applyTheme();
+document.getElementById('themeToggle')?.addEventListener('click', () => {
+  const dark = !document.body.classList.contains('dark');
+  ssStore.setItem('ss_theme', dark ? 'dark' : 'light');
+  applyTheme();
+});
+
+const fileInput = document.getElementById('fileInput');
+const dropzone = document.getElementById('dropzone');
+const fileName = document.getElementById('fileName');
+function showSelectedFile(file) {
+  if (!fileName || !file) return;
+  const mb = (file.size / 1024 / 1024).toFixed(2);
+  fileName.textContent = `${file.name} · ${mb} MB`;
+}
+fileInput?.addEventListener('change', () => showSelectedFile(fileInput.files[0]));
+['dragenter','dragover'].forEach(ev => dropzone?.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev => dropzone?.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove('drag'); }));
+dropzone?.addEventListener('drop', e => { const file=e.dataTransfer.files[0]; if(file){ const dt=new DataTransfer(); dt.items.add(file); fileInput.files=dt.files; showSelectedFile(file); } });
 
 // ---------- view switching ----------
 
@@ -47,6 +144,7 @@ function showView(name) {
   document.getElementById(`view-${name}`).classList.add('active');
   document.querySelectorAll('.navbtn').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
   if (name === 'browse') loadNotes();
+  if (name === 'dashboard') loadDashboard();
   if (name === 'bookmarks') loadBookmarks();
   if (name === 'notifications') loadNotifications();
   if (name === 'moderation') loadModeration();
@@ -55,7 +153,7 @@ function showView(name) {
 document.getElementById('nav').addEventListener('click', (e) => {
   const btn = e.target.closest('.navbtn');
   if (!btn) return;
-  if (!state.token) { renderAuthArea(); showView('auth'); return; }
+  if (!state.token && !state.demo) { renderAuthArea(); showView('auth'); return; }
   showView(btn.dataset.view);
 });
 
@@ -66,12 +164,12 @@ document.getElementById('backToBrowse').addEventListener('click', () => showView
 function renderAuthArea() {
   const el = document.getElementById('authArea');
   if (state.user) {
-    el.innerHTML = `<span>${escapeHtml(state.user.name)} (${escapeHtml(state.user.role)})</span> <button id="logoutBtn">Log out</button>`;
+    el.innerHTML = `<div class="userchip"><span class="avatar">${escapeHtml(state.user.name.trim().charAt(0).toUpperCase())}</span><span>${escapeHtml(state.user.name)} <span class="role">${escapeHtml(state.user.role)}</span></span></div> <button id="logoutBtn">Log out</button>`;
     document.getElementById('logoutBtn').addEventListener('click', logout);
     document.querySelector('.mod-only').style.display =
       (state.user.role === 'moderator' || state.user.role === 'admin') ? 'inline-block' : 'none';
   } else {
-    el.innerHTML = `<button id="loginNavBtn">Login / Register</button>`;
+    el.innerHTML = `<button id="loginNavBtn">Log in</button>`;
     document.getElementById('loginNavBtn').addEventListener('click', () => showView('auth'));
   }
   renderVerifyBanner();
@@ -81,9 +179,9 @@ function renderVerifyBanner() {
   const banner = document.getElementById('verifyBanner');
   if (state.user && !state.user.email_verified) {
     banner.style.display = 'flex';
-    banner.innerHTML = `<span>⚠️ Verify your email to upload notes.</span>` +
+    banner.innerHTML = `<span>Verify your email to upload notes.</span>` +
       (state.lastVerificationUrl
-        ? `<a href="${state.lastVerificationUrl}" target="_blank">Click to verify</a>`
+        ? `<a href="${state.lastVerificationUrl}" target="_blank">Verify now</a>`
         : `<button id="resendBtn">Resend verification link</button>`);
     const resendBtn = document.getElementById('resendBtn');
     if (resendBtn) {
@@ -92,10 +190,10 @@ function renderVerifyBanner() {
           const data = await api('/resend-verification', { method: 'POST' });
           if (data.verification_url) {
             state.lastVerificationUrl = data.verification_url;
-            localStorage.setItem('ss_verification_url', data.verification_url);
+            ssStore.setItem('ss_verification_url', data.verification_url);
           }
           renderVerifyBanner();
-        } catch (err) { alert(err.message); }
+        } catch (err) { toast(err.message); }
       });
     }
   } else {
@@ -107,9 +205,9 @@ function logout() {
   state.token = null;
   state.user = null;
   state.lastVerificationUrl = null;
-  localStorage.removeItem('ss_token');
-  localStorage.removeItem('ss_user');
-  localStorage.removeItem('ss_verification_url');
+  ssStore.removeItem('ss_token');
+  ssStore.removeItem('ss_user');
+  ssStore.removeItem('ss_verification_url');
   renderAuthArea();
   showView('auth');
 }
@@ -144,7 +242,7 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
     });
     if (data.verification_url) {
       state.lastVerificationUrl = data.verification_url;
-      localStorage.setItem('ss_verification_url', data.verification_url);
+      ssStore.setItem('ss_verification_url', data.verification_url);
     }
     onAuthSuccess(data);
   } catch (err) {
@@ -155,8 +253,8 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
 function onAuthSuccess(data) {
   state.token = data.token;
   state.user = data.user;
-  localStorage.setItem('ss_token', data.token);
-  localStorage.setItem('ss_user', JSON.stringify(data.user));
+  ssStore.setItem('ss_token', data.token);
+  ssStore.setItem('ss_user', JSON.stringify(data.user));
   renderAuthArea();
   showView('browse');
 }
@@ -183,9 +281,10 @@ async function loadNotes(page = 1) {
   params.set('page_size', 9);
   const { notes, pagination } = await api(`/notes?${params.toString()}`);
   const list = document.getElementById('notesList');
-  list.innerHTML = notes.map(renderNoteCard).join('') || '<p>No notes found.</p>';
+  list.innerHTML = notes.map(renderNoteCard).join('') || '<div class="empty"><strong>No notes match that search</strong>Try a different keyword, or clear the filters.</div>';
   list.querySelectorAll('.note-card').forEach((card) => {
     card.addEventListener('click', () => openNote(card.dataset.id));
+    card.addEventListener('keydown', (e) => { if (e.key === 'Enter') openNote(card.dataset.id); });
   });
   renderPagination(pagination);
 }
@@ -206,21 +305,25 @@ function renderPagination(p) {
 
 function renderNoteCard(n) {
   const tags = (n.tags || '').split(',').filter(Boolean).map((t) => `<span class="tag-pill">${escapeHtml(t.trim())}</span>`).join('');
-  const verifiedBadge = n.verified_by_faculty ? `<span class="badge-verified">✓ Faculty-verified</span>` : '';
+  const verifiedBadge = n.verified_by_faculty ? `<span class="badge-verified">${icon('check')} Faculty-verified</span>` : '';
   return `
-    <div class="note-card" data-id="${n.id}">
-      <h3>${escapeHtml(n.title)} ${verifiedBadge}</h3>
-      <div class="meta">${escapeHtml(n.course_code || n.subject || '')} · by ${escapeHtml(n.uploader_name)}</div>
+    <article class="note-card" data-id="${n.id}" tabindex="0" style="--spine:${spineColor(n.course_code || n.subject)}">
+      <div>${verifiedBadge}</div>
+      <h3>${escapeHtml(n.title)}</h3>
+      <div class="meta"><span class="course">${escapeHtml(n.course_code || n.subject || 'General')}</span> &middot; by ${escapeHtml(n.uploader_name)}</div>
       <div>${tags}</div>
       <div class="stats">
-        <span>${starString(n.avg_stars)} (${n.rating_count})</span>
-        <span>💬 ${n.comment_count}</span>
-        <span>👁 ${n.views}</span>
+        <span class="stars" title="${Number(n.avg_stars || 0).toFixed(1)} out of 5">${starString(n.avg_stars)}</span><span>${n.rating_count}</span>
+        <span>${icon('chat')} ${n.comment_count}</span>
+        <span>${icon('eye')} ${n.views}</span>
       </div>
-    </div>`;
+    </article>`;
 }
 
 document.getElementById('searchBtn').addEventListener('click', () => loadNotes(1));
+document.getElementById('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') loadNotes(1); });
+['courseInput','tagInput','sortSelect'].forEach(id => document.getElementById(id)?.addEventListener('change', () => loadNotes(1)));
+
 
 async function openNote(id) {
   state.currentNoteId = id;
@@ -229,36 +332,36 @@ async function openNote(id) {
   const { versions } = await api(`/notes/${id}/versions`);
   const detail = document.getElementById('noteDetail');
   const tags = (note.tags || '').split(',').filter(Boolean).map((t) => `<span class="tag-pill">${escapeHtml(t.trim())}</span>`).join('');
-  const verifiedBadge = note.verified_by_faculty ? `<span class="badge-verified">✓ Faculty-verified</span>` : '';
+  const verifiedBadge = note.verified_by_faculty ? `<span class="badge-verified">${icon('check')} Faculty-verified</span>` : '';
   const isStaff = state.user && ['faculty', 'moderator', 'admin'].includes(state.user.role);
   const isOwnerOrStaff = state.user && (state.user.id === note.uploader_id || isStaff);
 
   detail.innerHTML = `
-    <div class="note-full">
+    <div class="note-full" style="--spine:${spineColor(note.course_code || note.subject)}">
       <h2>${escapeHtml(note.title)} ${verifiedBadge}</h2>
-      <div class="meta">${escapeHtml(note.subject || '')} · ${escapeHtml(note.course_code || '')} · ${escapeHtml(note.semester || '')}</div>
+      <div class="meta">${[note.subject, note.course_code, note.semester].filter(Boolean).map(escapeHtml).join(' &middot; ')} &middot; by ${escapeHtml(note.uploader_name || '')}</div>
       <div>${tags}</div>
       <p>${escapeHtml(note.description || '')}</p>
       <div class="rating-row" id="starRow"></div>
       <div class="action-row">
-        <a href="/api/notes/${note.id}/download"><button type="button">⬇ Download (v${note.current_version})</button></a>
-        <button id="bookmarkBtn">🔖 Bookmark</button>
-        <button id="reportBtn">🚩 Report</button>
-        ${isStaff && !note.verified_by_faculty ? '<button id="verifyBtn">✓ Mark as faculty-verified</button>' : ''}
+        <a href="/api/notes/${note.id}/download"><button type="button" class="primary">${icon('down')} Download (v${note.current_version})</button></a>
+        <button id="bookmarkBtn">${icon('mark')} Bookmark</button>
+        <button id="reportBtn">${icon('flag')} Report</button>
+        ${isStaff && !note.verified_by_faculty ? `<button id="verifyBtn">${icon('check')} Mark as faculty-verified</button>` : ''}
       </div>
       <div class="version-list">
         ${versions.map((v) => `<div class="${v.version === note.current_version ? 'current' : ''}">v${v.version} — ${escapeHtml(v.file_name)} by ${escapeHtml(v.uploaded_by_name)} (${v.created_at})</div>`).join('')}
       </div>
       ${isOwnerOrStaff ? `
       <form id="versionForm" class="authform">
-        <label style="font-size:0.85rem;color:var(--muted)">Upload a new version of this file:</label>
+        <label class="field">Upload a new version of this file</label>
         <input type="file" name="file" required>
         <button type="submit">Upload new version</button>
       </form>` : ''}
       <h3>Comments (${comments.length})</h3>
-      <div id="commentsList">${comments.map(renderComment).join('') || '<p>No comments yet.</p>'}</div>
+      <div id="commentsList">${comments.map(renderComment).join('') || '<p class="msg">No comments yet. Be the first to say what helped.</p>'}</div>
       <form id="commentForm" class="authform">
-        <textarea name="body" placeholder="Add a comment…" required></textarea>
+        <textarea name="body" placeholder="Add a comment" required></textarea>
         <button type="submit">Post comment</button>
       </form>
     </div>`;
@@ -285,7 +388,7 @@ async function openNote(id) {
       try {
         await apiUpload(`/notes/${note.id}/version`, fd);
         openNote(note.id);
-      } catch (err) { alert(err.message); }
+      } catch (err) { toast(err.message); }
     });
   }
 
@@ -336,7 +439,7 @@ function attachReplyHandlers(noteId) {
           body: { body: textarea.value, parent_id: form.dataset.parent },
         });
         openNote(noteId);
-      } catch (err) { alert(err.message); }
+      } catch (err) { toast(err.message); }
     });
   });
 }
@@ -345,14 +448,14 @@ async function rateNote(id, stars) {
   try {
     await api(`/notes/${id}/rate`, { method: 'POST', body: { stars } });
     openNote(id);
-  } catch (err) { alert(err.message); }
+  } catch (err) { toast(err.message); }
 }
 
 async function bookmarkNote(id) {
   try {
     await api(`/notes/${id}/bookmark`, { method: 'POST' });
-    alert('Bookmarked!');
-  } catch (err) { alert(err.message); }
+    toast('Bookmarked');
+  } catch (err) { toast(err.message); }
 }
 
 async function reportNote(id) {
@@ -360,15 +463,15 @@ async function reportNote(id) {
   if (reason === null) return;
   try {
     await api(`/notes/${id}/report`, { method: 'POST', body: { reason } });
-    alert('Report submitted. A moderator will review it.');
-  } catch (err) { alert(err.message); }
+    toast('Report sent. A moderator will review it.');
+  } catch (err) { toast(err.message); }
 }
 
 async function verifyNote(id) {
   try {
     await api(`/notes/${id}/verify`, { method: 'POST' });
     openNote(id);
-  } catch (err) { alert(err.message); }
+  } catch (err) { toast(err.message); }
 }
 
 // ---------- upload ----------
@@ -381,23 +484,58 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
     document.getElementById('uploadMsg').textContent = 'Please choose a file.';
     return;
   }
+  const progress = document.getElementById('uploadProgress');
+  progress.hidden = false;
+  document.getElementById('uploadMsg').textContent = 'Uploading your notes…';
   try {
-    await apiUpload('/notes', fd);
-    document.getElementById('uploadMsg').textContent = 'Uploaded successfully!';
+    await apiUpload('/notes', fd, 'POST', (pct) => { progress.hidden = false; progress.querySelector('span').style.width = `${pct}%`; });
+    progress.hidden = true;
+    progress.querySelector('span').style.width = '0%';
+    document.getElementById('uploadMsg').textContent = '✓ Uploaded successfully. Your notes are now live.';
     e.target.reset();
+    if (fileName) fileName.textContent = 'PDF, DOCX, PPTX, TXT, MD, JPG or PNG';
   } catch (err) {
+    progress.hidden = true;
     document.getElementById('uploadMsg').textContent = err.message;
   }
 });
+
+// ---------- personal dashboard ----------
+
+async function loadDashboard() {
+  if (!state.user) return;
+  document.getElementById('dashName').textContent = state.user.name.split(' ')[0];
+  try {
+    const data = await api('/me/stats');
+    document.getElementById('personalStats').innerHTML = `
+      <div class="stat-pill"><div class="num">${data.uploads}</div><div class="label">Notes uploaded</div></div>
+      <div class="stat-pill"><div class="num">${data.bookmarks}</div><div class="label">Bookmarks</div></div>
+      <div class="stat-pill"><div class="num">${data.comments}</div><div class="label">Comments</div></div>
+      <div class="stat-pill"><div class="num">${data.views}</div><div class="label">Views on your notes</div></div>`;
+    document.getElementById('myUploads').innerHTML = data.recentUploads.map(renderMiniNote).join('') || '<div class="mini-empty">No uploads yet. Share your first notes.</div>';
+    document.getElementById('myBookmarks').innerHTML = data.recentBookmarks.map(renderMiniNote).join('') || '<div class="mini-empty">No bookmarks yet.</div>';
+  } catch (err) { toast(err.message); }
+}
+
+function renderMiniNote(n) {
+  return `<button class="mini-note" data-note-id="${n.id}" type="button"><span><strong>${escapeHtml(n.title)}</strong><small>${escapeHtml(n.course_code || n.subject || 'General')} · ${n.views} views</small></span><span class="mini-arrow">→</span></button>`;
+}
+
+document.getElementById('dashUploadBtn')?.addEventListener('click', () => showView('upload'));
+document.getElementById('dashBrowseUploads')?.addEventListener('click', () => showView('browse'));
+document.getElementById('dashBrowseBookmarks')?.addEventListener('click', () => showView('bookmarks'));
+document.getElementById('myUploads')?.addEventListener('click', e => { const b=e.target.closest('[data-note-id]'); if(b) openNote(b.dataset.noteId); });
+document.getElementById('myBookmarks')?.addEventListener('click', e => { const b=e.target.closest('[data-note-id]'); if(b) openNote(b.dataset.noteId); });
 
 // ---------- bookmarks ----------
 
 async function loadBookmarks() {
   const { notes } = await api('/bookmarks');
   const list = document.getElementById('bookmarksList');
-  list.innerHTML = notes.map(renderNoteCard).join('') || '<p>No bookmarks yet.</p>';
+  list.innerHTML = notes.map(renderNoteCard).join('') || '<div class="empty"><strong>Nothing saved yet</strong>Open a note and choose Bookmark to keep it here.</div>';
   list.querySelectorAll('.note-card').forEach((card) => {
     card.addEventListener('click', () => openNote(card.dataset.id));
+    card.addEventListener('keydown', (e) => { if (e.key === 'Enter') openNote(card.dataset.id); });
   });
 }
 
@@ -406,7 +544,9 @@ async function loadBookmarks() {
 async function loadNotifications() {
   const { notifications } = await api('/notifications');
   const list = document.getElementById('notificationsList');
-  list.innerHTML = notifications.map((n) => `<li>${escapeHtml(n.message)} <span style="color:var(--muted)">— ${n.created_at}</span></li>`).join('') || '<li>No notifications.</li>';
+  list.innerHTML = notifications.map((n) => `<li class="${n.is_read ? '' : 'unread'}"><span>${escapeHtml(n.message)}</span><span class="when">${escapeHtml(n.created_at)}</span></li>`).join('') || '<li>You\'re all caught up.</li>';
+  const unread = notifications.filter(n => !n.is_read).length; const badge = document.getElementById('notifBadge'); badge.hidden = !unread; badge.textContent = unread;
+  if (unread) { try { await api('/notifications/read', {method:'POST'}); } catch {} }
 }
 
 // ---------- moderation ----------
@@ -429,7 +569,7 @@ async function loadModeration() {
           <button class="dismiss">Dismiss</button>
           <button class="remove">Remove note</button>
         </div>
-      </div>`).join('') || '<p>No open reports.</p>';
+      </div>`).join('') || '<div class="empty"><strong>No open reports</strong>Nothing needs review right now.</div>';
 
     document.querySelectorAll('.report-card .dismiss').forEach((btn) =>
       btn.addEventListener('click', (e) => resolveReport(e.target.closest('.report-card').dataset.id, 'dismiss')));
@@ -453,9 +593,16 @@ function escapeHtml(str) {
 
 // ---------- boot ----------
 
-renderAuthArea();
-if (state.token) {
-  showView('browse');
-} else {
-  showView('auth');
-}
+(async function boot() {
+  // If the API can't be reached (or isn't JSON), switch to sample-data preview mode.
+  try {
+    if (!ssIsWeb) throw new Error('not served over http');
+    const r = await fetch('/api/notes?page_size=1');
+    if (!r.ok || !(r.headers.get('content-type') || '').includes('json')) throw new Error('no api');
+  } catch (e) {
+    state.demo = true;
+    document.body.classList.add('demo');
+  }
+  renderAuthArea();
+  showView(state.token || state.demo ? 'browse' : 'auth');
+})();

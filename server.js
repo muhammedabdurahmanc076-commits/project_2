@@ -479,6 +479,26 @@ async function handleReportNote(req, res, id) {
   sendJSON(res, 201, { ok: true });
 }
 
+
+async function handleMyStats(req, res) {
+  const user = requireAuth(req);
+  if (!user) return sendJSON(res, 401, { error: 'Login required' });
+  const uploads = db.prepare("SELECT COUNT(*) c FROM notes WHERE uploader_id = ? AND status = 'active'").get(user.id).c;
+  const bookmarks = db.prepare('SELECT COUNT(*) c FROM bookmarks WHERE user_id = ?').get(user.id).c;
+  const comments = db.prepare('SELECT COUNT(*) c FROM comments WHERE user_id = ?').get(user.id).c;
+  const views = db.prepare("SELECT COALESCE(SUM(views),0) c FROM notes WHERE uploader_id = ? AND status = 'active'").get(user.id).c;
+  const recentUploads = db.prepare("SELECT * FROM notes WHERE uploader_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 5").all(user.id).map(noteWithStats);
+  const recentBookmarks = db.prepare("SELECT n.* FROM bookmarks b JOIN notes n ON n.id=b.note_id WHERE b.user_id=? AND n.status='active' ORDER BY b.created_at DESC LIMIT 5").all(user.id).map(noteWithStats);
+  sendJSON(res, 200, { uploads, bookmarks, comments, views, recentUploads, recentBookmarks });
+}
+
+async function handleMarkNotificationsRead(req, res) {
+  const user = requireAuth(req);
+  if (!user) return sendJSON(res, 401, { error: 'Login required' });
+  db.prepare('UPDATE notifications SET is_read = 1 WHERE user_id = ?').run(user.id);
+  sendJSON(res, 200, { ok: true });
+}
+
 // ---------- moderation / dashboard ----------
 
 async function handleListReports(req, res) {
@@ -569,7 +589,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (segments[1] === 'bookmarks' && req.method === 'GET') return await handleListBookmarks(req, res);
     if (segments[1] === 'follow' && req.method === 'POST') return await handleFollow(req, res);
+    if (segments[1] === 'notifications' && segments[2] === 'read' && req.method === 'POST') return await handleMarkNotificationsRead(req, res);
     if (segments[1] === 'notifications' && req.method === 'GET') return await handleNotifications(req, res);
+    if (segments[1] === 'me' && segments[2] === 'stats' && req.method === 'GET') return await handleMyStats(req, res);
     if (segments[1] === 'moderation' && segments[2] === 'reports' && segments.length === 3 && req.method === 'GET') {
       return await handleListReports(req, res);
     }
