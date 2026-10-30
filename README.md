@@ -83,7 +83,7 @@ studyshare/
 
 The frontend works without the server. If the API can't be reached, or the
 page is opened as a plain file (`file://`, or `content://` on Android), it
-switches to **preview mode**: a "Preview" badge appears in the header and the
+switches to **preview mode** (no badge is shown) and the
 app runs on the 5 sample notes from `public/demo.js`. Browsing, search, ratings,
 comments, bookmarks and uploads all work, and demo uploads are kept in the
 browser's storage when it allows that (otherwise just for the current visit).
@@ -208,6 +208,8 @@ GET    /api/dashboard/stats                                                     
 - **v11** — mobile polish: compact one-row header with scrollable tabs, shorter
   hero card, search box and button on one row, side-by-side filters, tighter
   note cards, clearer keyboard focus, and reduced-motion support.
+- **v14** — phone bottom tab bar (always reachable, nothing cut off), moon/sun
+  theme icon, flatter pages without double frames, and a two-column action grid on the note page.
 
 If you edit `app.js`, `demo.js` or `style.css`, re-inline them into
 `public/index.html` (or edit `index.html` directly) so the single-file version
